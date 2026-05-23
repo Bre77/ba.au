@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>ba.au — Brett Adams</title>
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, viewport-fit=cover"
+        />
+        <meta
+            name="description"
+            content="Brett Adams — founder of Teslemetry, SplunkTrust member, open-source contributor."
+        />
+        <meta name="theme-color" content="#02040d" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --bg-0: #02040d;
+                --bg-1: #050a1c;
+                --bg-2: #08122d;
+                --fg: #e6f0ff;
+                --fg-dim: rgba(230, 240, 255, 0.55);
+                --fg-mute: rgba(230, 240, 255, 0.28);
+                --line: rgba(110, 160, 255, 0.16);
+                --line-hot: rgba(110, 160, 255, 0.42);
+                --blue: #4a7eff;
+                --cyan: #5bd6ff;
+                --hot: #b9d4ff;
+                --aber-r: #ff3a9c;
+                --aber-b: #00e5ff;
+                --display:
+                    "Space Grotesk", system-ui, -apple-system, sans-serif;
+                --mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+            }
+
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                height: 100%;
+                overflow: hidden;
+            }
+            body {
+                background: var(--bg-0);
+                color: var(--fg);
+                font-family: var(--display);
+                position: relative;
+                cursor: crosshair;
+                -webkit-font-smoothing: antialiased;
+                text-rendering: optimizeLegibility;
+            }
+
+            /* ===== WARP CANVAS ===== */
+            canvas#warp {
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                display: block;
+            }
+
+            /* radial vignette / atmosphere */
+            .atmos {
+                position: fixed;
+                inset: 0;
+                z-index: 1;
+                pointer-events: none;
+                background:
+                    radial-gradient(
+                        ellipse 60% 50% at 50% 50%,
+                        transparent 0%,
+                        rgba(2, 4, 13, 0.55) 75%,
+                        rgba(2, 4, 13, 0.9) 100%
+                    ),
+                    radial-gradient(
+                        ellipse 80% 60% at 50% 100%,
+                        rgba(74, 126, 255, 0.1),
+                        transparent 60%
+                    ),
+                    radial-gradient(
+                        ellipse 80% 60% at 50% 0%,
+                        rgba(91, 214, 255, 0.06),
+                        transparent 60%
+                    );
+            }
+            .scanlines {
+                position: fixed;
+                inset: 0;
+                z-index: 2;
+                pointer-events: none;
+                opacity: 0.18;
+                background-image: repeating-linear-gradient(
+                    0deg,
+                    transparent 0,
+                    transparent 2px,
+                    rgba(255, 255, 255, 0.04) 2px,
+                    rgba(255, 255, 255, 0.04) 3px
+                );
+                mix-blend-mode: overlay;
+            }
+            .grain {
+                position: fixed;
+                inset: -50%;
+                z-index: 3;
+                pointer-events: none;
+                opacity: 0.06;
+                background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1   0 0 0 0 1   0 0 0 0 1   0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+                animation: jitter 1.2s steps(3) infinite;
+            }
+            @keyframes jitter {
+                0% {
+                    transform: translate(0, 0);
+                }
+                33% {
+                    transform: translate(-2%, 1%);
+                }
+                66% {
+                    transform: translate(1%, -2%);
+                }
+                100% {
+                    transform: translate(0, 0);
+                }
+            }
+
+            /* ===== SHELL ===== */
+            .shell {
+                position: relative;
+                z-index: 5;
+                height: 100dvh;
+                display: grid;
+                grid-template-rows: auto 1fr auto;
+                padding: 22px;
+                gap: 0;
+            }
+
+            /* ===== HUD CHROME ===== */
+            .hud {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                font-family: var(--mono);
+                font-size: 11px;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: var(--fg-dim);
+            }
+            .hud .col {
+                display: grid;
+                gap: 6px;
+            }
+            .hud .row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .hud .tag {
+                color: var(--fg-mute);
+            }
+            .hud .val {
+                color: var(--fg);
+            }
+            .hud .key {
+                color: var(--cyan);
+            }
+
+            .brand-mark {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                color: var(--fg);
+                font-weight: 500;
+                letter-spacing: 0.18em;
+            }
+            .brand-mark .pulse {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: var(--cyan);
+                box-shadow:
+                    0 0 14px var(--cyan),
+                    0 0 30px rgba(91, 214, 255, 0.55);
+                animation: pulse 1.6s ease-in-out infinite;
+            }
+            @keyframes pulse {
+                0%,
+                100% {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+                50% {
+                    opacity: 0.35;
+                    transform: scale(0.7);
+                }
+            }
+
+            .corner {
+                position: fixed;
+                width: 18px;
+                height: 18px;
+                border: 1px solid var(--line-hot);
+                z-index: 4;
+                pointer-events: none;
+            }
+            .corner.tl {
+                top: 14px;
+                left: 14px;
+                border-right: 0;
+                border-bottom: 0;
+            }
+            .corner.tr {
+                top: 14px;
+                right: 14px;
+                border-left: 0;
+                border-bottom: 0;
+            }
+            .corner.bl {
+                bottom: 14px;
+                left: 14px;
+                border-right: 0;
+                border-top: 0;
+            }
+            .corner.br {
+                bottom: 14px;
+                right: 14px;
+                border-left: 0;
+                border-top: 0;
+            }
+
+            /* ===== HERO ===== */
+            .stage {
+                position: relative;
+            }
+            .hero {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: min(92vw, 900px);
+                text-align: center;
+                perspective: 1200px;
+                display: grid;
+                justify-items: center;
+                gap: 0;
+                z-index: 5;
+            }
+
+            .label {
+                font-family: var(--mono);
+                font-size: 11px;
+                letter-spacing: 0.32em;
+                text-transform: uppercase;
+                color: var(--fg-mute);
+                margin-bottom: 18px;
+                display: inline-flex;
+                align-items: center;
+                gap: 12px;
+            }
+            .label::before,
+            .label::after {
+                content: "";
+                height: 1px;
+                width: 60px;
+                background: linear-gradient(
+                    90deg,
+                    transparent,
+                    var(--line-hot),
+                    transparent
+                );
+            }
+
+            .logo {
+                font-family: var(--display);
+                font-weight: 700;
+                font-size: clamp(96px, 22vw, 360px);
+                line-height: 0.85;
+                letter-spacing: -0.045em;
+                display: inline-block;
+                position: relative;
+                user-select: none;
+                filter: drop-shadow(0 0 60px rgba(74, 126, 255, 0.2));
+            }
+            .logo .chars {
+                display: inline-flex;
+                position: relative;
+            }
+            .logo .char {
+                display: inline-block;
+                position: relative;
+                will-change: transform;
+                transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+                color: var(--fg);
+            }
+            /* RGB aberration layers — duplicated chars via pseudo-elements */
+            .logo .char::before,
+            .logo .char::after {
+                content: attr(data-c);
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+                mix-blend-mode: screen;
+                will-change: transform;
+                transition:
+                    transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+                    opacity 300ms ease;
+            }
+            .logo .char::before {
+                color: var(--aber-r);
+                transform: translate(var(--ax, 0px), var(--ay, 0px));
+                opacity: 0.8;
+            }
+            .logo .char::after {
+                color: var(--aber-b);
+                transform: translate(
+                    calc(var(--ax, 0px) * -1),
+                    calc(var(--ay, 0px) * -1)
+                );
+                opacity: 0.9;
+            }
+            .logo .char.dot {
+                color: var(--cyan);
+            }
+            .logo .char.dot::before,
+            .logo .char.dot::after {
+                opacity: 0.7;
+            }
+
+            .tagline {
+                margin-top: 28px;
+                font-family: var(--mono);
+                font-size: 13px;
+                letter-spacing: 0.24em;
+                text-transform: uppercase;
+                color: var(--fg-dim);
+            }
+            .tagline .sep {
+                color: var(--cyan);
+                margin: 0 10px;
+            }
+            .tagline .strong {
+                color: var(--fg);
+            }
+
+            .bio {
+                margin-top: 16px;
+                max-width: 640px;
+                font-family: var(--display);
+                font-size: 15px;
+                line-height: 1.6;
+                color: var(--fg-dim);
+                text-wrap: balance;
+            }
+            .bio b {
+                color: var(--fg);
+                font-weight: 500;
+            }
+
+            /* ===== BOTTOM ROW ===== */
+            .bottom {
+                display: grid;
+                grid-template-columns: 1fr auto 1fr;
+                align-items: end;
+                gap: 24px;
+                font-family: var(--mono);
+                font-size: 11px;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: var(--fg-dim);
+            }
+
+            .socials {
+                display: flex;
+                gap: 10px;
+                justify-content: center;
+            }
+            .social {
+                --c: var(--fg);
+                width: 46px;
+                height: 46px;
+                display: grid;
+                place-items: center;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                color: var(--fg);
+                background: linear-gradient(
+                    180deg,
+                    rgba(110, 160, 255, 0.04),
+                    rgba(110, 160, 255, 0.01)
+                );
+                text-decoration: none;
+                transition: all 280ms cubic-bezier(0.16, 1, 0.3, 1);
+                position: relative;
+                overflow: hidden;
+                backdrop-filter: blur(8px);
+            }
+            .social::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: radial-gradient(
+                    circle at center,
+                    rgba(91, 214, 255, 0.18),
+                    transparent 70%
+                );
+                opacity: 0;
+                transition: opacity 280ms ease;
+            }
+            .social svg {
+                width: 20px;
+                height: 20px;
+                position: relative;
+                z-index: 1;
+                transition: transform 280ms ease;
+            }
+            .social .glyph {
+                position: relative;
+                z-index: 1;
+                font-family: var(--display);
+                font-weight: 700;
+                font-size: 24px;
+                line-height: 1;
+                transition: transform 280ms ease;
+                transform: translateX(1px);
+            }
+            .social.splunk:hover .glyph {
+                transform: translateX(3px);
+            }
+            .social:hover {
+                border-color: var(--cyan);
+                color: var(--cyan);
+                transform: translateY(-3px);
+                box-shadow:
+                    0 10px 30px rgba(91, 214, 255, 0.25),
+                    inset 0 0 0 1px rgba(91, 214, 255, 0.4);
+            }
+            .social:hover::before {
+                opacity: 1;
+            }
+            .social:hover svg {
+                transform: scale(1.08);
+            }
+            .social .tip {
+                position: absolute;
+                bottom: calc(100% + 10px);
+                left: 50%;
+                transform: translateX(-50%) translateY(4px);
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
+                color: var(--cyan);
+                background: rgba(2, 4, 13, 0.85);
+                border: 1px solid var(--line-hot);
+                padding: 4px 8px;
+                border-radius: 4px;
+                white-space: nowrap;
+                pointer-events: none;
+                opacity: 0;
+                transition: all 220ms ease;
+            }
+            .social:hover .tip {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+
+            .bottom .left {
+                text-align: left;
+                display: grid;
+                gap: 6px;
+            }
+            .bottom .right {
+                text-align: right;
+                display: grid;
+                gap: 6px;
+            }
+
+            .meta-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .bottom .left .meta-row {
+                justify-content: flex-start;
+            }
+            .bottom .right .meta-row {
+                justify-content: flex-end;
+            }
+            .bullet {
+                width: 4px;
+                height: 4px;
+                border-radius: 50%;
+                background: var(--cyan);
+                box-shadow: 0 0 8px var(--cyan);
+            }
+
+            /* ===== MARQUEE ===== */
+            .marquee {
+                position: fixed;
+                left: 0;
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                height: 100%;
+                pointer-events: none;
+                z-index: 3;
+                display: grid;
+                place-items: center;
+                overflow: hidden;
+            }
+            .marquee-track {
+                position: absolute;
+                top: 50%;
+                white-space: nowrap;
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.4em;
+                color: var(--line-hot);
+                text-transform: uppercase;
+                transform: translateY(-50%) rotate(-90deg);
+                transform-origin: center;
+                opacity: 0.55;
+            }
+            .marquee-track .dot-sep {
+                color: var(--cyan);
+                margin: 0 18px;
+            }
+
+            /* ticker bottom */
+            .ticker {
+                position: fixed;
+                left: 50%;
+                bottom: 84px;
+                transform: translateX(-50%);
+                font-family: var(--mono);
+                font-size: 10px;
+                letter-spacing: 0.32em;
+                color: var(--fg-mute);
+                text-transform: uppercase;
+                z-index: 4;
+                pointer-events: none;
+                display: none;
+            }
+
+            /* Responsive tweaks */
+            @media (max-width: 720px) {
+                .shell {
+                    padding: 14px;
+                }
+                .hud {
+                    font-size: 9px;
+                    letter-spacing: 0.1em;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                .hud .col.center-col {
+                    display: none;
+                }
+                .corner {
+                    width: 12px;
+                    height: 12px;
+                }
+                .logo {
+                    font-size: clamp(80px, 26vw, 200px);
+                }
+                .label {
+                    font-size: 9px;
+                    letter-spacing: 0.24em;
+                }
+                .label::before,
+                .label::after {
+                    width: 28px;
+                }
+                .tagline {
+                    font-size: 10px;
+                    letter-spacing: 0.18em;
+                }
+                .bio {
+                    font-size: 13px;
+                    padding: 0 12px;
+                }
+                .bottom {
+                    grid-template-columns: 1fr;
+                    gap: 16px;
+                }
+                .bottom .left,
+                .bottom .right {
+                    text-align: center;
+                }
+                .bottom .left .meta-row,
+                .bottom .right .meta-row {
+                    justify-content: center;
+                }
+                .social {
+                    width: 42px;
+                    height: 42px;
+                }
+                .marquee {
+                    display: none;
+                }
+            }
+
+            /* respect reduced motion */
+            @media (prefers-reduced-motion: reduce) {
+                .grain {
+                    animation: none;
+                }
+                .brand-mark .pulse {
+                    animation: none;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <canvas id="warp"></canvas>
+        <div class="atmos"></div>
+        <div class="scanlines"></div>
+        <div class="grain"></div>
+
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+
+        <!-- side marquees -->
+        <div class="marquee" style="left: 24px; right: auto">
+            <div class="marquee-track" id="mLeft"></div>
+        </div>
+        <div class="marquee" style="right: 24px; left: auto">
+            <div class="marquee-track" id="mRight"></div>
+        </div>
+
+        <div class="shell">
+            <header class="hud">
+                <div class="col">
+                    <div class="brand-mark">
+                        <span class="pulse"></span><span>STATUS / ONLINE</span>
+                    </div>
+                </div>
+                <div class="col" style="text-align: right; justify-items: end">
+                    <div>
+                        <span class="tag">velocity /</span>
+                        <span class="val" id="velocity">0000 km/s</span>
+                    </div>
+                </div>
+            </header>
+
+            <main class="stage">
+                <div class="hero">
+                    <div class="label">SECTOR · BA.AU · ESTABLISHED 2026</div>
+                    <div class="logo">
+                        <span class="chars" id="logo">
+                            <span class="char" data-c="b">b</span
+                            ><span class="char" data-c="a">a</span
+                            ><span class="char dot" data-c=".">.</span
+                            ><span class="char" data-c="a">a</span
+                            ><span class="char" data-c="u">u</span>
+                        </span>
+                    </div>
+                    <div class="tagline">
+                        <span class="strong">Brett Adams</span>
+                        <span class="sep">/</span> Founder, Teslemetry
+                        <span class="sep">/</span> SplunkTrust Member
+                        <span class="sep">/</span> Open Source Contributor
+                    </div>
+                    <p class="bio">
+                        Solo founder of <b>Teslemetry</b>, globally recognised
+                        <b>Splunk</b> expert, and prolific contributor to
+                        <b>Home Assistant</b> and adjacent open-source projects.
+                        Full-stack TypeScript &amp; Node, home automation,
+                        enterprise data analytics architecture.
+                    </p>
+                </div>
+            </main>
+
+            <footer class="bottom">
+                <div class="left">
+                    <div class="meta-row">
+                        <span class="tag">build /</span>
+                        <span>v1.0.0 · 2026.05</span>
+                    </div>
+                </div>
+                <nav class="socials" id="socials">
+                    <a
+                        class="social"
+                        href="https://github.com/Bre77"
+                        target="_blank"
+                        rel="noopener"
+                        aria-label="GitHub"
+                    >
+                        <span class="tip">GitHub · Bre77</span>
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.69-3.87-1.54-3.87-1.54-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.18.91-.25 1.89-.38 2.86-.39.97.01 1.95.14 2.86.39 2.18-1.49 3.14-1.18 3.14-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.43-2.7 5.41-5.27 5.69.41.36.77 1.06.77 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.67.8.56C20.22 21.38 23.5 17.07 23.5 12 23.5 5.65 18.35.5 12 .5z"
+                            />
+                        </svg>
+                    </a>
+                    <a
+                        class="social"
+                        href="https://www.linkedin.com/in/bre77/"
+                        target="_blank"
+                        rel="noopener"
+                        aria-label="LinkedIn"
+                    >
+                        <span class="tip">LinkedIn · /in/bre77</span>
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05c.47-.9 1.64-1.85 3.37-1.85 3.6 0 4.26 2.37 4.26 5.45v6.29zM5.34 7.43A2.06 2.06 0 1 1 5.35 3.3a2.06 2.06 0 0 1-.01 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"
+                            />
+                        </svg>
+                    </a>
+                    <a
+                        class="social"
+                        href="https://bsky.app/profile/bre77.au"
+                        target="_blank"
+                        rel="noopener"
+                        aria-label="Bluesky"
+                    >
+                        <span class="tip">Bluesky · @bre77.au</span>
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M5.6 3.2c2.7 2 5.6 6.1 6.7 8.3 1.1-2.2 4-6.3 6.7-8.3 1.9-1.4 5-2.5 5 1 0 .7-.4 5.9-.6 6.7-.8 3-3.8 3.7-6.5 3.3 4.7.8 5.9 3.5 3.3 6.1-5 5-7.2-1.3-7.7-2.9-.1-.3-.2-.4-.2-.3 0-.1-.1 0-.2.3-.5 1.6-2.7 7.9-7.7 2.9-2.6-2.6-1.4-5.3 3.3-6.1-2.7.4-5.7-.3-6.5-3.3-.2-.8-.6-6-.6-6.7 0-3.5 3.1-2.4 5 -1z"
+                            />
+                        </svg>
+                    </a>
+                    <a
+                        class="social"
+                        href="https://www.reddit.com/user/s7orm/"
+                        target="_blank"
+                        rel="noopener"
+                        aria-label="Reddit"
+                    >
+                        <span class="tip">Reddit · u/s7orm</span>
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M22 12.07c0-1.21-.98-2.2-2.2-2.2-.59 0-1.13.24-1.52.62-1.5-1.07-3.55-1.76-5.83-1.84l1-4.7 3.27.7c.04.82.72 1.48 1.55 1.48.85 0 1.55-.7 1.55-1.55S18.62 3 17.77 3c-.6 0-1.13.36-1.38.87L12.7 3.1c-.1-.02-.2.04-.22.14L11.36 8.66c-2.3.07-4.37.76-5.88 1.84-.39-.39-.93-.63-1.53-.63-1.22 0-2.2.99-2.2 2.2 0 .89.53 1.66 1.3 2.01-.04.23-.05.46-.05.7 0 3.55 4.13 6.44 9.22 6.44s9.22-2.89 9.22-6.44c0-.23-.02-.47-.06-.69.75-.36 1.27-1.12 1.27-2.02zM7 13.6c0-.86.7-1.55 1.55-1.55s1.55.69 1.55 1.55c0 .85-.69 1.55-1.55 1.55S7 14.46 7 13.6zm8.95 4.13c-1.12 1.12-3.26 1.21-3.89 1.21-.63 0-2.77-.08-3.89-1.21-.17-.17-.17-.43 0-.6.17-.16.43-.16.6 0 .71.71 2.22.96 3.29.96 1.07 0 2.59-.25 3.29-.96.17-.17.43-.16.6 0 .16.17.16.43 0 .6zm-.27-2.57c-.85 0-1.55-.69-1.55-1.55 0-.86.7-1.55 1.55-1.55s1.55.69 1.55 1.55c0 .85-.69 1.55-1.55 1.55z"
+                            />
+                        </svg>
+                    </a>
+                    <a
+                        class="social"
+                        href="https://teslemetry.com"
+                        target="_blank"
+                        rel="noopener"
+                        aria-label="Teslemetry"
+                    >
+                        <span class="tip">Teslemetry · Founder</span>
+                        <svg
+                            viewBox="0 0 500 500"
+                            fill="currentColor"
+                            aria-hidden="true"
+                        >
+                            <g
+                                transform="matrix(1.0313531,0,0,1.0313531,-41.872936,60.104659)"
+                            >
+                                <polygon
+                                    points="206.5,165 138.4,233.1 40.6,135.4 138.3,37.6 206.8,105.9 402.6,105.7 343.3,165"
+                                />
+                                <polygon
+                                    points="359.2,262.5 163.1,262.8 222.6,203.5 359.5,203.5 427.6,135.3 525.4,233.1 427.7,330.9"
+                                />
+                            </g>
+                        </svg>
+                    </a>
+                    <a
+                        class="social splunk"
+                        href="https://splunkbase.splunk.com/apps?author=s7orm"
+                        target="_blank"
+                        rel="noopener"
+                        aria-label="Splunkbase"
+                    >
+                        <span class="tip">Splunkbase · s7orm</span>
+                        <span class="glyph">&gt;</span>
+                    </a>
+                </nav>
+                <div class="right">
+                    <div class="meta-row"><span>© 2026 BRETT ADAMS</span></div>
+                </div>
+            </footer>
+        </div>
+
+        <script>
+            // =========================================================================
+            // WARP STARFIELD — cursor-steerable
+            // =========================================================================
+            (() => {
+                const canvas = document.getElementById("warp");
+                const ctx = canvas.getContext("2d", { alpha: false });
+                const DPR = Math.min(window.devicePixelRatio || 1, 2);
+                let W = 0,
+                    H = 0,
+                    CX = 0,
+                    CY = 0;
+                const stars = [];
+                const N = 520;
+
+                function resize() {
+                    W = canvas.width = Math.floor(window.innerWidth * DPR);
+                    H = canvas.height = Math.floor(window.innerHeight * DPR);
+                    canvas.style.width = window.innerWidth + "px";
+                    canvas.style.height = window.innerHeight + "px";
+                    CX = W / 2;
+                    CY = H / 2;
+                    ctx.fillStyle = "#02040d";
+                    ctx.fillRect(0, 0, W, H);
+                }
+                resize();
+                window.addEventListener("resize", resize);
+
+                function rand(min, max) {
+                    return min + Math.random() * (max - min);
+                }
+
+                function makeStar(seed) {
+                    // angle around vanishing point, fixed radius in normalized space
+                    const a = Math.random() * Math.PI * 2;
+                    const r = rand(0.04, 1.2);
+                    return {
+                        x: Math.cos(a) * r,
+                        y: Math.sin(a) * r,
+                        z: seed ? Math.random() : 1,
+                        pz: 0,
+                        h: 195 + Math.random() * 50, // 195–245 cyan→blue
+                        s: 0.65 + Math.random() * 0.35,
+                        b: 0.55 + Math.random() * 0.45,
+                    };
+                }
+                for (let i = 0; i < N; i++) stars.push(makeStar(true));
+
+                // mouse — normalised offset from center, smoothed
+                let mx = 0,
+                    my = 0,
+                    tmx = 0,
+                    tmy = 0;
+                let speedTarget = 0.006,
+                    speed = 0.006;
+                let boost = 0;
+                window.addEventListener(
+                    "pointermove",
+                    (e) => {
+                        tmx = (e.clientX / window.innerWidth) * 2 - 1;
+                        tmy = (e.clientY / window.innerHeight) * 2 - 1;
+                    },
+                    { passive: true },
+                );
+                window.addEventListener("pointerdown", () => {
+                    boost = 1;
+                    window.__warpBoost = 1;
+                });
+                window.addEventListener("pointerup", () => {
+                    boost = 0;
+                    window.__warpBoost = 0;
+                });
+                window.addEventListener("blur", () => {
+                    boost = 0;
+                    window.__warpBoost = 0;
+                });
+
+                let last = performance.now();
+                let frame = 0;
+                function tick(t) {
+                    const dt = Math.min(40, t - last) / 16.6;
+                    last = t;
+                    frame++;
+
+                    // smooth mouse
+                    mx += (tmx - mx) * 0.06;
+                    my += (tmy - my) * 0.06;
+                    // speed easing with boost
+                    speedTarget = 0.006 + boost * 0.022;
+                    speed += (speedTarget - speed) * 0.08;
+
+                    // trail by overlaying translucent bg
+                    ctx.fillStyle = "rgba(2, 4, 13, 0.22)";
+                    ctx.fillRect(0, 0, W, H);
+
+                    // shifting vanishing point
+                    const vx = CX + mx * W * 0.18;
+                    const vy = CY + my * H * 0.18;
+
+                    ctx.lineCap = "round";
+
+                    for (let i = 0; i < stars.length; i++) {
+                        const s = stars[i];
+                        s.pz = s.z;
+                        s.z -= speed * dt;
+                        if (s.z < 0.0015) {
+                            const a = Math.random() * Math.PI * 2;
+                            const r = rand(0.04, 1.2);
+                            s.x = Math.cos(a) * r;
+                            s.y = Math.sin(a) * r;
+                            s.z = 1;
+                            s.pz = 1;
+                            s.h = 195 + Math.random() * 50;
+                            s.s = 0.65 + Math.random() * 0.35;
+                            s.b = 0.55 + Math.random() * 0.45;
+                        }
+
+                        const k = 0.9; // perspective tightness
+                        const sx = (s.x / s.z) * W * k + vx;
+                        const sy = (s.y / s.z) * H * k + vy;
+                        const psx = (s.x / s.pz) * W * k + vx;
+                        const psy = (s.y / s.pz) * H * k + vy;
+
+                        // cull offscreen
+                        if (
+                            sx < -200 ||
+                            sx > W + 200 ||
+                            sy < -200 ||
+                            sy > H + 200
+                        )
+                            continue;
+
+                        const depth = 1 - s.z;
+                        const alpha = Math.min(1, depth * 1.7) * s.b;
+                        const lw = Math.max(0.6, depth * 2.8) * DPR * s.s;
+                        const lightness = 58 + depth * 24;
+                        ctx.strokeStyle =
+                            "hsla(" +
+                            s.h.toFixed(0) +
+                            ", 100%, " +
+                            lightness.toFixed(0) +
+                            "%, " +
+                            alpha.toFixed(3) +
+                            ")";
+                        ctx.lineWidth = lw;
+                        ctx.beginPath();
+                        ctx.moveTo(psx, psy);
+                        ctx.lineTo(sx, sy);
+                        ctx.stroke();
+
+                        // bright head dot on closest stars
+                        if (s.z < 0.18) {
+                            ctx.fillStyle =
+                                "hsla(" +
+                                s.h.toFixed(0) +
+                                ", 100%, 92%, " +
+                                alpha.toFixed(3) +
+                                ")";
+                            ctx.beginPath();
+                            ctx.arc(sx, sy, lw * 0.8, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    requestAnimationFrame(tick);
+                }
+                requestAnimationFrame(tick);
+            })();
+
+            // =========================================================================
+            // CURSOR-REACTIVE WORDMARK — RGB chromatic aberration + parallax
+            // =========================================================================
+            (() => {
+                const logo = document.getElementById("logo");
+                const chars = Array.from(logo.querySelectorAll(".char"));
+                let raf = 0;
+                const state = chars.map(() => ({
+                    tx: 0,
+                    ty: 0,
+                    ax: 0,
+                    ay: 0,
+                    x: 0,
+                    y: 0,
+                    axN: 0,
+                    ayN: 0,
+                }));
+                let mouseX = window.innerWidth / 2;
+                let mouseY = window.innerHeight / 2;
+                let active = false;
+
+                window.addEventListener(
+                    "pointermove",
+                    (e) => {
+                        mouseX = e.clientX;
+                        mouseY = e.clientY;
+                        active = true;
+                        if (!raf) raf = requestAnimationFrame(loop);
+                    },
+                    { passive: true },
+                );
+
+                window.addEventListener("pointerleave", () => {
+                    active = false;
+                });
+
+                function loop() {
+                    raf = 0;
+                    let stillMoving = false;
+                    for (let i = 0; i < chars.length; i++) {
+                        const ch = chars[i];
+                        const r = ch.getBoundingClientRect();
+                        const ccx = r.left + r.width / 2;
+                        const ccy = r.top + r.height / 2;
+                        const dx = mouseX - ccx;
+                        const dy = mouseY - ccy;
+                        const dist = Math.hypot(dx, dy);
+                        const radius = 360;
+                        const power = Math.max(0, 1 - dist / radius);
+
+                        // repel — characters lean AWAY from cursor
+                        const tx = -(dx / radius) * 28 * power;
+                        const ty = -(dy / radius) * 28 * power;
+                        // chromatic aberration grows with power
+                        const axT = (dx / radius) * 14 * power;
+                        const ayT = (dy / radius) * 14 * power;
+
+                        const s = state[i];
+                        s.x += (tx - s.x) * 0.18;
+                        s.y += (ty - s.y) * 0.18;
+                        s.axN += (axT - s.axN) * 0.22;
+                        s.ayN += (ayT - s.ayN) * 0.22;
+
+                        ch.style.transform =
+                            "translate(" +
+                            s.x.toFixed(2) +
+                            "px," +
+                            s.y.toFixed(2) +
+                            "px)";
+                        ch.style.setProperty("--ax", s.axN.toFixed(2) + "px");
+                        ch.style.setProperty("--ay", s.ayN.toFixed(2) + "px");
+
+                        if (
+                            Math.abs(s.x - tx) > 0.05 ||
+                            Math.abs(s.y - ty) > 0.05 ||
+                            Math.abs(s.axN - axT) > 0.05 ||
+                            Math.abs(s.ayN - ayT) > 0.05
+                        ) {
+                            stillMoving = true;
+                        }
+                    }
+                    if (stillMoving) raf = requestAnimationFrame(loop);
+                }
+
+                // Idle entrance animation
+                const idleStart = performance.now();
+                function idle() {
+                    const t = (performance.now() - idleStart) / 1000;
+                    // subtle breathing aberration when no cursor activity
+                    if (!active && performance.now() - idleStart > 600) {
+                        for (let i = 0; i < chars.length; i++) {
+                            const ch = chars[i];
+                            const phase = t * 1.4 + i * 0.5;
+                            const a = Math.sin(phase) * 1.2;
+                            const b = Math.cos(phase * 0.8) * 1.2;
+                            ch.style.setProperty("--ax", a.toFixed(2) + "px");
+                            ch.style.setProperty("--ay", b.toFixed(2) + "px");
+                        }
+                    }
+                    requestAnimationFrame(idle);
+                }
+                requestAnimationFrame(idle);
+            })();
+
+            // =========================================================================
+            // HUD CHROME — velocity, marquees
+            // =========================================================================
+            (() => {
+                const vel = document.getElementById("velocity");
+                const mLeft = document.getElementById("mLeft");
+                const mRight = document.getElementById("mRight");
+
+                // Velocity — idle drift around ~120 km/s, spikes hard during boost
+                let v = 120;
+                let target = 120;
+                let lastVTick = performance.now();
+                function velTick() {
+                    const now = performance.now();
+                    const dt = (now - lastVTick) / 1000;
+                    lastVTick = now;
+                    const boost = window.__warpBoost ? 1 : 0;
+                    // boost target: scream up to ~299,792 km/s (speed of light, naturally)
+                    target = boost
+                        ? 280000 + Math.random() * 19792
+                        : 90 + Math.random() * 80;
+                    // ease faster on boost
+                    const ease = boost
+                        ? Math.min(1, dt * 6)
+                        : Math.min(1, dt * 2.4);
+                    v += (target - v) * ease;
+                    if (vel) {
+                        const display = Math.max(0, Math.round(v));
+                        vel.textContent =
+                            String(display).padStart(4, "0") + " km/s";
+                        vel.style.color = boost ? "#5bd6ff" : "";
+                        vel.style.textShadow = boost ? "0 0 12px #5bd6ff" : "";
+                    }
+                    requestAnimationFrame(velTick);
+                }
+                requestAnimationFrame(velTick);
+
+                // Marquee content
+                const items = [
+                    "TESLEMETRY",
+                    "SPLUNKTRUST",
+                    "HOME ASSISTANT",
+                    "TESLA API",
+                    "OPEN SOURCE",
+                    "TYPESCRIPT",
+                    "NODE.JS",
+                    "SECURITY ARCHITECTURE",
+                    ".CONF SPEAKER ×6",
+                    "GOLD COAST · AUSTRALIA",
+                    "BA · AU",
+                    "BRETT ADAMS",
+                ];
+                function buildMarquee(el, reverse) {
+                    const seq = reverse ? [...items].reverse() : items;
+                    const text = (seq.join(" · ") + " · ").repeat(4);
+                    el.innerHTML = "";
+                    const span = document.createElement("span");
+                    span.textContent = text;
+                    el.appendChild(span);
+                    // animate via raf
+                    let off = reverse ? 0 : -1200;
+                    const speed = reverse ? -0.18 : 0.18;
+                    function step() {
+                        off += speed;
+                        const range = 1200;
+                        if (off > range) off -= range;
+                        if (off < -range) off += range;
+                        el.style.transform =
+                            "translateY(" + off + "px) rotate(-90deg)";
+                        requestAnimationFrame(step);
+                    }
+                    requestAnimationFrame(step);
+                }
+                if (mLeft) buildMarquee(mLeft, false);
+                if (mRight) buildMarquee(mRight, true);
+            })();
+        </script>
+    </body>
+</html>
